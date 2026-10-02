@@ -70,6 +70,9 @@
     line-height: 1.7;
     -webkit-font-smoothing: antialiased;
     padding-inline: clamp(16px, 5vw, 64px);
+    /* 한국어를 글자 중간에서 자르지 않는다 (서/비스 → 서비스) */
+    word-break: keep-all;
+    overflow-wrap: break-word;
   }
   a { color: inherit; }
   a:focus-visible, button:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 3px; border-radius: 4px; }
@@ -113,20 +116,17 @@
   /* 섞이는 원 — 밍글(mingle) */
   .mix {
     position: relative; width: 100%; max-width: 420px; aspect-ratio: 1; justify-self: center;
+    touch-action: pan-y; cursor: grab; -webkit-tap-highlight-color: transparent;
   }
+  .mix:active { cursor: grabbing; }
   .mix i {
     position: absolute; width: 58%; aspect-ratio: 1; border-radius: 50%;
     mix-blend-mode: var(--blend);
-    animation: drift 14s ease-in-out infinite alternate;
+    will-change: transform;
   }
   .mix i:nth-child(1) { background: var(--disc-a); left: 4%; top: 10%; }
-  .mix i:nth-child(2) { background: var(--disc-b); right: 2%; top: 22%; animation-delay: -4s; }
-  .mix i:nth-child(3) { background: var(--disc-c); left: 22%; bottom: 2%; animation-delay: -8s; }
-  @keyframes drift {
-    0% { transform: translate(0, 0); }
-    100% { transform: translate(6%, -4%); }
-  }
-  @media (prefers-reduced-motion: reduce) { .mix i { animation: none; } }
+  .mix i:nth-child(2) { background: var(--disc-b); right: 2%; top: 22%; }
+  .mix i:nth-child(3) { background: var(--disc-c); left: 22%; bottom: 2%; }
 
   /* 섹션 공통 */
   section { padding-block: clamp(56px, 8vw, 96px); border-top: 1px solid var(--line); }
@@ -245,7 +245,7 @@
         <p class="lead">사람의 하루에 자연스럽게 섞여 드는 서비스를 만듭니다.</p>
         <p class="sub">밍글웍스는 앱과 웹 서비스를 기획하고, 만들고, 운영하는 작은 스튜디오입니다. 쓰고 싶은 서비스는 직접 만들어 보고, 좋은 아이디어를 가진 팀과는 함께 만듭니다.</p>
       </div>
-      <div class="mix" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="mix" id="mix" aria-hidden="true"><i></i><i></i><i></i></div>
     </div>
 
     <section id="what">
@@ -368,5 +368,48 @@
     <p class="copy">© 2026 Mingle Works</p>
   </footer>
 </div>
+
+<script>
+/* 세 원이 포인터(손가락)를 각자 다른 속도로 따라오며 섞인다.
+   가만히 있으면 천천히 떠다니고, 누르면 흩어졌다가 다시 모인다. 움직임 줄이기 설정이면 멈춘다. */
+(() => {
+  const box = document.getElementById('mix');
+  if (!box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const discs = [...box.children];
+  const pull = [0.10, 0.18, 0.26];            // 원마다 따라오는 정도
+  const dir = [1, -0.8, 0.6];                  // 원마다 반대로도 움직여 겹침이 바뀐다
+  const phase = [0, 2.1, 4.2];
+  let tx = 0, ty = 0, kick = 0;                 // 목표 위치(-1~1), 튕김 세기
+  const cur = discs.map(() => ({ x: 0, y: 0, s: 1 }));
+
+  const aim = (cx, cy) => {
+    const r = box.getBoundingClientRect();
+    tx = Math.max(-1.5, Math.min(1.5, (cx - (r.left + r.width / 2)) / (r.width / 2)));
+    ty = Math.max(-1.5, Math.min(1.5, (cy - (r.top + r.height / 2)) / (r.height / 2)));
+  };
+  addEventListener('pointermove', e => aim(e.clientX, e.clientY), { passive: true });
+  box.addEventListener('pointerdown', e => { aim(e.clientX, e.clientY); kick = 1; });
+  document.addEventListener('pointerleave', () => { tx = 0; ty = 0; });
+
+  const tick = t => {
+    const w = box.clientWidth;
+    kick *= 0.92;
+    discs.forEach((d, i) => {
+      const sec = t / 1000;
+      const driftX = Math.sin(sec * 0.35 + phase[i]) * 0.05 * w;
+      const driftY = Math.cos(sec * 0.28 + phase[i]) * 0.04 * w;
+      const goalX = driftX + tx * dir[i] * pull[i] * w + Math.cos(phase[i] * 3) * kick * 0.18 * w;
+      const goalY = driftY + ty * dir[i] * pull[i] * w + Math.sin(phase[i] * 3) * kick * 0.18 * w;
+      const c = cur[i];
+      c.x += (goalX - c.x) * 0.08;
+      c.y += (goalY - c.y) * 0.08;
+      c.s += ((1 + kick * 0.12) - c.s) * 0.2;
+      d.style.transform = `translate(${c.x.toFixed(1)}px, ${c.y.toFixed(1)}px) scale(${c.s.toFixed(3)})`;
+    });
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})();
+</script>
 </body>
 </html>
